@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DNS Records Management</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        padding: 20px;
+        max-width: 640px;
+        margin: 0 auto;
+      }
+
+      .record-item {
+        display: flex;
+        align-items: center;
+      }
+
+      .record-item .record-text {
+        flex-grow: 1;
+        display: flex;
+        gap: 10px;
+      }
+
+      .record-item input[type='text'] {
+        width: 150px;
+      }
+
+      .action-buttons button {
+        margin-left: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1 class="mb-4">DNS Records</h1>
+
+    <form id="addRecordForm" class="mb-4">
+      <div class="input-group">
+        <input
+          type="text"
+          id="domain"
+          name="domain"
+          class="form-control"
+          placeholder="Domain"
+          required
+        />
+        <input
+          type="text"
+          id="ipAddress"
+          name="ipAddress"
+          class="form-control"
+          placeholder="IP Address"
+          required
+        />
+        <button type="submit" class="btn btn-primary">Add Record</button>
+      </div>
+    </form>
+
+    <ul id="dnsRecordsList" class="list-group mb-4"></ul>
+
+    <script>
+      async function fetchDNSRecords() {
+        const response = await fetch('/records');
+        const data = await response.json();
+        const list = document.getElementById('dnsRecordsList');
+        list.innerHTML = '';
+        for (const domain in data) {
+          const li = document.createElement('li');
+          li.classList.add('list-group-item', 'record-item');
+          const recordText = document.createElement('div');
+          recordText.classList.add('record-text');
+          const domainInput = document.createElement('input');
+          domainInput.type = 'text';
+          domainInput.value = domain;
+          domainInput.disabled = true;
+          const ipAddressInput = document.createElement('input');
+          ipAddressInput.type = 'text';
+          ipAddressInput.value = data[domain];
+          ipAddressInput.disabled = true;
+          recordText.appendChild(domainInput);
+          recordText.appendChild(ipAddressInput);
+          li.appendChild(recordText);
+          const actionButtons = document.createElement('div');
+          actionButtons.classList.add('action-buttons');
+          const editButton = document.createElement('button');
+          editButton.classList.add('btn', 'btn-sm', 'btn-outline-primary');
+          editButton.textContent = 'Edit';
+          editButton.addEventListener('click', () =>
+            enableEdit(domainInput, ipAddressInput)
+          );
+          const saveButton = document.createElement('button');
+          saveButton.classList.add(
+            'btn',
+            'btn-sm',
+            'btn-outline-success',
+            'd-none'
+          );
+          saveButton.textContent = 'Save';
+          saveButton.addEventListener('click', () =>
+            saveEdit(domain, domainInput.value, ipAddressInput.value)
+          );
+          const cancelButton = document.createElement('button');
+          cancelButton.classList.add(
+            'btn',
+            'btn-sm',
+            'btn-outline-secondary',
+            'd-none'
+          );
+          cancelButton.textContent = 'Cancel';
+          cancelButton.addEventListener('click', () =>
+            cancelEdit(domainInput, ipAddressInput, domain, data[domain])
+          );
+          const deleteButton = document.createElement('button');
+          deleteButton.classList.add('btn', 'btn-sm', 'btn-outline-danger');
+          deleteButton.textContent = 'Delete';
+          deleteButton.addEventListener('click', () => deleteDNSRecord(domain));
+          actionButtons.appendChild(editButton);
+          actionButtons.appendChild(saveButton);
+          actionButtons.appendChild(cancelButton);
+          actionButtons.appendChild(deleteButton);
+          li.appendChild(actionButtons);
+          list.appendChild(li);
+        }
+      }
+
+      function enableEdit(domainInput, ipAddressInput) {
+        domainInput.disabled = false;
+        ipAddressInput.disabled = false;
+        domainInput.focus();
+        const parent = domainInput.parentElement.parentElement;
+        const actionButtons = parent.querySelector('.action-buttons');
+        const editButton = actionButtons.querySelector('.btn-outline-primary');
+        const saveButton = actionButtons.querySelector('.btn-outline-success');
+        const cancelButton = actionButtons.querySelector(
+          '.btn-outline-secondary'
+        );
+        editButton.classList.add('d-none');
+        saveButton.classList.remove('d-none');
+        cancelButton.classList.remove('d-none');
+      }
+
+      async function saveEdit(oldDomain, newDomain, newIpAddress) {
+        if (oldDomain === newDomain) {
+          const response = await fetch(`/records/${oldDomain}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ ipAddress: newIpAddress }),
+          });
+          if (response.ok) {
+            fetchDNSRecords();
+          } else {
+            alert('Failed to edit DNS record');
+          }
+        } else {
+          const deleteResponse = await fetch(`/records/${oldDomain}`, {
+            method: 'DELETE',
+          });
+          if (deleteResponse.ok) {
+            const addResponse = await fetch('/records', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ [newDomain]: newIpAddress }),
+            });
+            if (addResponse.ok) {
+              fetchDNSRecords();
+            } else {
+              alert('Failed to edit DNS record');
+            }
+          } else {
+            alert('Failed to edit DNS record');
+          }
+        }
+      }
+
+      function cancelEdit(domainInput, ipAddressInput, domain, ipAddress) {
+        domainInput.value = domain;
+        domainInput.disabled = true;
+        ipAddressInput.value = ipAddress;
+        ipAddressInput.disabled = true;
+        const parent = domainInput.parentElement.parentElement;
+        const actionButtons = parent.querySelector('.action-buttons');
+        const editButton = actionButtons.querySelector('.btn-outline-primary');
+        const saveButton = actionButtons.querySelector('.btn-outline-success');
+        const cancelButton = actionButtons.querySelector(
+          '.btn-outline-secondary'
+        );
+        editButton.classList.remove('d-none');
+        saveButton.classList.add('d-none');
+        cancelButton.classList.add('d-none');
+      }
+
+      async function deleteDNSRecord(domain) {
+        if (
+          confirm(
+            `Are you sure you want to delete the DNS record for ${domain}?`
+          )
+        ) {
+          const response = await fetch(`/records/${domain}`, {
+            method: 'DELETE',
+          });
+          if (response.ok) {
+            fetchDNSRecords();
+          } else {
+            alert('Failed to delete DNS record');
+          }
+        }
+      }
+
+      async function addDNSRecord(event) {
+        event.preventDefault();
+        const form = event.target;
+        const domain = form.elements['domain'].value;
+        const ipAddress = form.elements['ipAddress'].value;
+        const response = await fetch('/records', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ [domain]: ipAddress }),
+        });
+        if (response.ok) {
+          fetchDNSRecords();
+          form.reset();
+        } else {
+          alert('Failed to add DNS record');
+        }
+      }
+
+      document
+        .getElementById('addRecordForm')
+        .addEventListener('submit', addDNSRecord);
+      fetchDNSRecords();
+    </script>
+  </body>
+</html>
