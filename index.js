@@ -19,31 +19,31 @@ const server = dgram.createSocket('udp4');
 server.on('message', (msg, rinfo) => {
   try {
     const request = dnsPacket.decode(msg);
-    if (request.questions.length === 1 && request.questions[0].type === 'A') {
-      const question = request.questions[0];
-      const domain = question.name;
-      const response = dnsPacket.encode({
-        type: 'response',
-        id: request.id,
-        flags:
-          dnsPacket.RECURSION_DESIRED |
-          dnsPacket.RECURSION_AVAILABLE |
-          dnsPacket.AUTHORITATIVE_ANSWER,
-        questions: [question],
-        answers: dnsRecords[domain]
-          ? [
-              {
-                type: 'A',
-                class: 'IN',
-                name: domain,
-                ttl: 3600,
-                data: dnsRecords[domain],
-              },
-            ]
-          : [],
-      });
-      server.send(response, rinfo.port, rinfo.address);
+    if (request.questions.length === 0) {
+      console.log('Non-question query:', request);
+      return;
     }
+    const [question] = request.questions;
+    const domain = question.name;
+    const answer = question.type === 'A' && dnsRecords[domain] && {
+      type: 'A',
+      class: 'IN',
+      name: domain,
+      ttl: 3600,
+      data: dnsRecords[domain],
+    };
+    const response = dnsPacket.encode({
+      type: 'response',
+      id: request.id,
+      flags:
+        dnsPacket.RECURSION_DESIRED |
+        dnsPacket.RECURSION_AVAILABLE |
+        (answer ? 0 : 3),
+      questions: [question],
+      answers: answer ? [answer] : [],
+    });
+    console.log(`${new Date().toISOString()} ${rinfo.address}:${rinfo.port}`, `${question.type}:${question.name} -> ${answer ? answer.data : 'NXDOMAIN'}`);
+    server.send(response, rinfo.port, rinfo.address);
   } catch (err) {
     console.error('Error processing DNS request:', err);
   }
