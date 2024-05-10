@@ -3,8 +3,10 @@ const fs = require('fs');
 const path = require('path');
 const dnsPacket = require('dns-packet');
 const dgram = require('dgram');
+const dns = require('dns');
 
 const { DNS_RECORDS_FILE = 'data.json' } = process.env;
+const FORWARD_TLD = process.env.FORWARD_TLD.trim();
 const PORT = parseInt(process.env.PORT) || 3000;
 
 let dnsRecords = {};
@@ -16,7 +18,20 @@ try {
 
 const server = dgram.createSocket('udp4');
 
-server.on('message', (msg, rinfo) => {
+async function resolve(name) {
+  if (name in dnsRecords) {
+    return dnsRecords[name];
+  }
+  if (!(name.endsWith(FORWARD_TLD))) {
+    return;
+  }
+  const result = await dns.promises.resolve(name.substring(0, name.length - FORWARD_TLD.length)).catch(() => {});
+  if (Array.isArray(result) && result.length > 0) {
+    return result[0];
+  }
+}
+
+server.on('message', async (msg, rinfo) => {
   try {
     const request = dnsPacket.decode(msg);
     if (request.questions.length === 0) {
@@ -25,12 +40,13 @@ server.on('message', (msg, rinfo) => {
     }
     const [question] = request.questions;
     const domain = question.name;
-    const answer = question.type === 'A' && dnsRecords[domain] && {
+    let address;
+    const answer = question.type === 'A' && (address = await resolve(domain)) && {
       type: 'A',
       class: 'IN',
       name: domain,
       ttl: 3600,
-      data: dnsRecords[domain],
+      data: address,
     };
     const response = dnsPacket.encode({
       type: 'response',
