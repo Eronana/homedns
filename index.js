@@ -8,6 +8,7 @@ const dns = require('dns');
 const { DNS_RECORDS_FILE = 'data.json' } = process.env;
 const FORWARD_TLD = process.env.FORWARD_TLD.trim();
 const PORT = parseInt(process.env.PORT) || 3000;
+const TTL = parseInt(process.env.TTL) || 3600;
 
 let dnsRecords = {};
 try {
@@ -45,7 +46,7 @@ server.on('message', async (msg, rinfo) => {
       type: 'A',
       class: 'IN',
       name: domain,
-      ttl: 3600,
+      ttl: TTL,
       data: address,
     };
     const response = dnsPacket.encode({
